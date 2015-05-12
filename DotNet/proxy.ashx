@@ -157,6 +157,42 @@ public class proxy : IHttpHandler {
             }
         }
 
+        // origin
+        // check CORS header against list of allowed referers if they have been specified in proxy.config.
+        if (allowedReferersArray != null && allowedReferersArray.Length > 0)
+        {
+            bool allowed = false;
+            string origin = context.Request.Headers["Origin"];
+
+            if (!string.IsNullOrEmpty(origin))
+            {
+                foreach (string domain in allowedReferersArray)
+                {
+                    if ((allowedReferersArray.Length == 1) && domain == string.Empty)
+                        break;
+
+                    // Convert wildcard to regex.
+                    string regex = "^" + System.Text.RegularExpressions.Regex.Escape(domain)
+                        .Replace(@"\*", ".*").Replace(@"\?", ".") + "$";
+                    if (System.Text.RegularExpressions.Regex.IsMatch(origin, regex,
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    {
+                        context.Response.AddHeader("Access-Control-Allow-Origin", origin);
+                        allowed = true;
+                        break;
+                    }
+                }
+
+                if (!allowed)
+                {
+                    string errorMsg = "Proxy is being used from an unsupported origin: " + origin;
+                    log(TraceLevel.Error, errorMsg);
+                    sendErrorResponse(context.Response, null, errorMsg, System.Net.HttpStatusCode.Forbidden);
+                    return;
+                }
+            }
+        }
+        
         //Throttling: checking the rate limit coming from particular client IP
         if (!passThrough && serverUrl.RateLimit > -1) {
             lock (_rateMapLock)
